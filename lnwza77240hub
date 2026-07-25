@@ -10,7 +10,7 @@ local songNameCache = {}
 local detectedIds = {} -- สำหรับดักจับ ID ที่สแกนไปแล้ว
 local savedSongs = {}   -- Table สำหรับเก็บเพลงที่กดบันทึกไว้
 
-local SAVE_FILE_NAME = "saved_songs.json"
+local SAVE_FILE_NAME = "240hub_saved_songs.json"
 local currentPreviewSound = nil -- ตัวแปรเก็บเพลงที่กำลังทดลองฟังอยู่
 
 -- ⚙️ การตั้งค่าระบบกรอง SFX (SFX Filters)
@@ -18,7 +18,7 @@ local MIN_SONG_DURATION = 10 -- เสียงที่สั้นกว่า
 local SFX_KEYWORDS = {"sfx", "hit", "click", "footstep", "slash", "gun", "punch", "jump", "ui", "button", "explosion", "walk", "reload"}
 
 ------------------------------------------------------------------
--- ระบบ อ่าน/เขียน ไฟล์ถาวร (Save/Load Data)
+-- ระบบ อ่าน/เขียน ไฟล์ถาวร (Save/Load Data) แก้ไขให้ถูกต้อง 100%
 ------------------------------------------------------------------
 local function saveData()
     if writefile then
@@ -36,7 +36,7 @@ local function loadData()
     if readfile and isfile and isfile(SAVE_FILE_NAME) then
         local success, result = pcall(function()
             local content = readfile(SAVE_FILE_NAME)
-            return HttpService:JSONEncode(content)
+            return HttpService:JSONDecode(content)
         end)
         if success and type(result) == "table" then
             savedSongs = result
