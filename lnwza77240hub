@@ -923,3 +923,6 @@ end
 game.DescendantAdded:Connect(function(obj)
     pcall(registerSound, obj)
 end)
+
+-- 🔔 แสดงแจ้งเตือนรันสคริปต์สำเร็จที่มุมขวาล่าง
+showNotification("รันสคริป 240 เรียบร้อยแล้วค้าบบ")
