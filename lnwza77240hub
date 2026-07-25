@@ -7,18 +7,19 @@ local SoundService = game:GetService("SoundService")
 local localPlayer = Players.LocalPlayer
 
 local songNameCache = {}
-local detectedIds = {} -- สำหรับดักจับ ID ที่สแกนไปแล้ว
-local savedSongs = {}   -- Table สำหรับเก็บเพลงที่กดบันทึกไว้
+local detectedIds = {} 
+local savedSongs = {}   
 
 local SAVE_FILE_NAME = "240hub_saved_songs.json"
-local currentPreviewSound = nil -- ตัวแปรเก็บเพลงที่กำลังทดลองฟังอยู่
+local currentPreviewSound = nil 
 
--- ⚙️ การตั้งค่าระบบกรอง SFX (SFX Filters)
-local MIN_SONG_DURATION = 10 -- เสียงที่สั้นกว่า 10 วินาที จะถูกมองว่าเป็น SFX และโดนข้าม
+-- ⚙️ การตั้งค่าระบบกรอง SFX และกรอง ID เลขน้อย
+local MIN_SONG_DURATION = 10 
+local MIN_ID_LENGTH = 10 -- บังคับความยาว ID ขั้นต่ำ 10 หลัก (ตัด ID เลขน้อยๆ ทิ้งทั้งหมด)
 local SFX_KEYWORDS = {"sfx", "hit", "click", "footstep", "slash", "gun", "punch", "jump", "ui", "button", "explosion", "walk", "reload"}
 
 ------------------------------------------------------------------
--- ระบบ อ่าน/เขียน ไฟล์ถาวร (Save/Load Data) แก้ไขให้ถูกต้อง 100%
+-- ระบบ อ่าน/เขียน ไฟล์ถาวร (Save/Load Data)
 ------------------------------------------------------------------
 local function saveData()
     if writefile then
@@ -44,10 +45,19 @@ local function loadData()
     end
 end
 
--- ดึงข้อมูลเพลงที่บันทึกไว้เดิมขึ้นมาตั้งต้น
 loadData()
 
--- ฟังก์ชันดึงและกรองชื่อเพลง (พร้อมกรอง SFX)
+-- ฟังก์ชันตรวจสอบความถูกต้องของ ID (ต้องมี 10 หลักขึ้นไป)
+local function isValidSongId(rawText)
+    local numStr = string.match(tostring(rawText), "%d+")
+    if not numStr then return nil end
+    if #numStr < MIN_ID_LENGTH then
+        return nil -- ปัดตกทันทีถ้าความยาวน้อยกว่า 10 หลัก
+    end
+    return tonumber(numStr)
+end
+
+-- ฟังก์ชันดึงและกรองชื่อเพลง
 local function getRealSongName(soundObj, cleanId)
     if songNameCache[cleanId] ~= nil then
         return songNameCache[cleanId]
@@ -66,7 +76,6 @@ local function getRealSongName(soundObj, cleanId)
 
     local lowerName = string.lower(songName)
 
-    -- 1. กรองคำที่เป็น SFX จากชื่อ Asset
     for _, keyword in ipairs(SFX_KEYWORDS) do
         if string.find(lowerName, keyword) then
             songNameCache[cleanId] = false
@@ -74,19 +83,16 @@ local function getRealSongName(soundObj, cleanId)
         end
     end
 
-    -- 2. กรองเพลงที่ชื่อโดนเซนเซอร์เป็น ##### (ตัดทิ้งทันที)
     if string.find(songName, "#####") then
         songNameCache[cleanId] = false
         return nil
     end
 
-    -- 3. กรองเพลงที่ชื่อลงท้ายด้วย 10 หรือมีเลขต่อจาก 10 (ตัดทิ้งทันที)
     if string.match(songName, "10%d*$") then
         songNameCache[cleanId] = false
         return nil
     end
 
-    -- 4. กรองเพลงที่ชื่อ e (1) (ตัดทิ้งทันที)
     if string.find(lowerName, "e %s*%([%d]+%)") or string.find(lowerName, "e%s*%([%d]+%)") or lowerName == "e (1)" then
         songNameCache[cleanId] = false
         return nil
@@ -96,20 +102,14 @@ local function getRealSongName(soundObj, cleanId)
     return songName
 end
 
--- ฟังก์ชันเช็คว่าเป็น SFX โดยพิจารณาจากความยาวเสียง (TimeLength)
 local function isSFX(soundObj)
     if not soundObj then return false end
-    
-    -- หากเสียงยังโหลดไม่เสร็จ รอแป๊บหนึ่งเพื่ออ่านค่า TimeLength
     if not soundObj.IsLoaded and soundObj.TimeLength == 0 then
         task.wait(0.1)
     end
-
-    -- ถ้าความยาวเสียงน้อยกว่า MIN_SONG_DURATION (10 วินาที) ถือว่าเป็น SFX
     if soundObj.TimeLength > 0 and soundObj.TimeLength < MIN_SONG_DURATION then
         return true
     end
-
     return false
 end
 
@@ -152,7 +152,7 @@ frameStroke.Color = Color3.fromRGB(50, 50, 68)
 frameStroke.Thickness = 1.5
 frameStroke.Parent = mainFrame
 
--- 3. ปุ่มทางลัดเปิด/ปิดเมนู (240 นีออนสีส้มไฟ)
+-- 3. ปุ่มทางลัดเปิด/ปิดเมนู
 local shortcutBtn = Instance.new("TextButton")
 shortcutBtn.Name = "ShortcutButton"
 shortcutBtn.Size = UDim2.new(0, 68, 0, 68)
@@ -283,9 +283,7 @@ shortcutBtn.MouseButton1Click:Connect(function()
     shortcutBtn.Visible = false
 end)
 
-------------------------------------------------------------------
 -- 5. ระบบสลับหน้า (Tab Navigation Bar)
-------------------------------------------------------------------
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, -24, 0, 28)
 tabBar.Position = UDim2.new(0, 12, 0, 36)
@@ -325,9 +323,7 @@ local savedBtnCorner = Instance.new("UICorner")
 savedBtnCorner.CornerRadius = UDim.new(0, 5)
 savedBtnCorner.Parent = savedTabBtn
 
-------------------------------------------------------------------
 -- 6. หน้าต่าง ScrollingFrame ทั้ง 2 หน้า
-------------------------------------------------------------------
 local detectorFrame = Instance.new("ScrollingFrame")
 detectorFrame.Size = UDim2.new(1, -24, 0, 225)
 detectorFrame.Position = UDim2.new(0, 12, 0, 72)
@@ -379,7 +375,7 @@ local idTextBox = Instance.new("TextBox")
 idTextBox.Size = UDim2.new(1, -85, 1, 0)
 idTextBox.Position = UDim2.new(0, 10, 0, 0)
 idTextBox.BackgroundTransparency = 1
-idTextBox.PlaceholderText = "วาง ID เพลงที่นี่..."
+idTextBox.PlaceholderText = "วาง ID เพลง (10 หลักขึ้นไป)..."
 idTextBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
 idTextBox.Text = ""
 idTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -457,9 +453,7 @@ clearBtn.MouseButton1Click:Connect(function()
     table.clear(detectedIds)
 end)
 
-------------------------------------------------------------------
--- 7. ระบบการลากหน้าต่าง (Dragging System)
-------------------------------------------------------------------
+-- 7. ระบบการลากหน้าต่าง
 local function makeDraggable(guiObject)
     local dragging = false
     local dragInput, dragStart, startPos
@@ -500,9 +494,7 @@ end
 makeDraggable(mainFrame)
 makeDraggable(shortcutBtn)
 
-------------------------------------------------------------------
 -- 8. ระบบตรวจจับผู้เล่น และ การสร้างการ์ดเพลง
-------------------------------------------------------------------
 local function getPlayerFromSound(sound)
     local curr = sound.Parent
     while curr and curr ~= game do
@@ -525,7 +517,6 @@ local function getPlayerFromSound(sound)
     return nil
 end
 
--- ฟังก์ชันหยุดเพลงที่กำลังลองฟังอยู่
 local function stopCurrentPreview()
     if currentPreviewSound then
         currentPreviewSound:Stop()
@@ -534,7 +525,6 @@ local function stopCurrentPreview()
     end
 end
 
--- ฟังก์ชันสร้าง UI การ์ดบันทึก
 local function createSavedCardUI(cleanId, realName, ownerName)
     local strId = tostring(cleanId)
     if savedFrame:FindFirstChild("Saved_" .. strId) then return end
@@ -590,7 +580,6 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     idLabel.TextXAlignment = Enum.TextXAlignment.Left
     idLabel.Parent = card
 
-    -- 1. ปุ่มลองฟัง
     local playBtn = Instance.new("TextButton")
     playBtn.Size = UDim2.new(0, 52, 0, 34)
     playBtn.Position = UDim2.new(1, -172, 0.5, -17)
@@ -605,7 +594,6 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     playCorner.CornerRadius = UDim.new(0, 6)
     playCorner.Parent = playBtn
 
-    -- 2. ปุ่มก๊อปปี้
     local copyBtn = Instance.new("TextButton")
     copyBtn.Size = UDim2.new(0, 54, 0, 34)
     copyBtn.Position = UDim2.new(1, -114, 0.5, -17)
@@ -620,7 +608,6 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     btnCorner.CornerRadius = UDim.new(0, 6)
     btnCorner.Parent = copyBtn
 
-    -- 3. ปุ่มลบ
     local delBtn = Instance.new("TextButton")
     delBtn.Size = UDim2.new(0, 50, 0, 34)
     delBtn.Position = UDim2.new(1, -55, 0.5, -17)
@@ -698,7 +685,6 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     end)
 end
 
--- บันทึกและสร้าง UI
 local function addSavedSong(cleanId, realName, ownerName)
     local strId = tostring(cleanId)
     savedSongs[strId] = {
@@ -709,20 +695,23 @@ local function addSavedSong(cleanId, realName, ownerName)
     createSavedCardUI(cleanId, realName, ownerName)
 end
 
--- โหลดรายการเพลงที่เคยเก็บบันทึกไว้ถาวรขึ้นมาแสดงบนหน้าจอ
 for strId, info in pairs(savedSongs) do
     createSavedCardUI(tonumber(strId), info.name, info.owner)
 end
 
 addBtn.MouseButton1Click:Connect(function()
-    local text = idTextBox.Text
-    local cleanId = tonumber(string.match(text, "%d+"))
+    local cleanId = isValidSongId(idTextBox.Text)
     if cleanId then
         task.spawn(function()
             local realName = getRealSongName(nil, cleanId) or "Custom ID"
             addSavedSong(cleanId, realName, "บันทึกโดยผู้ใช้")
             idTextBox.Text = ""
         end)
+    else
+        idTextBox.Text = ""
+        idTextBox.PlaceholderText = "⚠️ ต้อง 10 หลักขึ้นไปเท่านั้น!"
+        task.wait(1.5)
+        idTextBox.PlaceholderText = "วาง ID เพลง (10 หลักขึ้นไป)..."
     end
 end)
 
@@ -730,17 +719,16 @@ local function createSoundCard(soundObj)
     local owner = getPlayerFromSound(soundObj)
     if not owner then return end
 
-    -- 🚫 กรอง SFX ตามความยาวไฟล์เสียงออกทันที
     if isSFX(soundObj) then return end
 
-    local cleanId = tonumber(string.match(soundObj.SoundId or "", "%d+"))
+    local cleanId = isValidSongId(soundObj.SoundId or "")
     if not cleanId then return end
 
     if detectedIds[cleanId] then return end
 
     task.spawn(function()
         local realName = getRealSongName(soundObj, cleanId)
-        if not realName then return end -- หากสแกนเจอชื่อที่มีคำว่า SFX จะโดนตัดทิ้งตรงนี้
+        if not realName then return end
 
         detectedIds[cleanId] = true
 
@@ -841,9 +829,7 @@ local function createSoundCard(soundObj)
     end)
 end
 
-------------------------------------------------------------------
 -- 9. ระบบตรวจจับความเร็วสูง
-------------------------------------------------------------------
 local function registerSound(sound)
     if not sound:IsA("Sound") then return end
 
