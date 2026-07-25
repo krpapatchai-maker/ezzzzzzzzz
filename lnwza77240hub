@@ -15,7 +15,7 @@ local currentPreviewSound = nil
 
 -- ⚙️ การตั้งค่าระบบกรอง SFX และกรอง ID เลขน้อย
 local MIN_SONG_DURATION = 10 
-local MIN_ID_LENGTH = 10 -- บังคับความยาว ID ขั้นต่ำ 10 หลัก (ตัด ID เลขน้อยๆ ทิ้งทั้งหมด)
+local MIN_ID_LENGTH = 10 -- บังคับความยาว ID ขั้นต่ำ 10 หลัก
 local SFX_KEYWORDS = {"sfx", "hit", "click", "footstep", "slash", "gun", "punch", "jump", "ui", "button", "explosion", "walk", "reload"}
 
 ------------------------------------------------------------------
@@ -23,41 +23,33 @@ local SFX_KEYWORDS = {"sfx", "hit", "click", "footstep", "slash", "gun", "punch"
 ------------------------------------------------------------------
 local function saveData()
     if writefile then
-        local success, err = pcall(function()
+        pcall(function()
             local jsonString = HttpService:JSONEncode(savedSongs)
             writefile(SAVE_FILE_NAME, jsonString)
         end)
-        if not success then
-            warn("Failed to save songs:", err)
-        end
     end
 end
 
 local function loadData()
     if readfile and isfile and isfile(SAVE_FILE_NAME) then
-        local success, result = pcall(function()
+        pcall(function()
             local content = readfile(SAVE_FILE_NAME)
-            return HttpService:JSONDecode(content)
+            savedSongs = HttpService:JSONDecode(content)
         end)
-        if success and type(result) == "table" then
-            savedSongs = result
-        end
     end
 end
 
 loadData()
 
--- ฟังก์ชันตรวจสอบความถูกต้องของ ID (ต้องมี 10 หลักขึ้นไป)
 local function isValidSongId(rawText)
     local numStr = string.match(tostring(rawText), "%d+")
     if not numStr then return nil end
     if #numStr < MIN_ID_LENGTH then
-        return nil -- ปัดตกทันทีถ้าความยาวน้อยกว่า 10 หลัก
+        return nil 
     end
     return tonumber(numStr)
 end
 
--- ฟังก์ชันดึงและกรองชื่อเพลง
 local function getRealSongName(soundObj, cleanId)
     if songNameCache[cleanId] ~= nil then
         return songNameCache[cleanId]
@@ -118,7 +110,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "UniversalSoundDetectorUI"
 screenGui.ResetOnSpawn = false
 
-local success, _ = pcall(function()
+pcall(function()
     if gethui then
         screenGui.Parent = gethui()
     elseif syn and syn.protect_gui then
@@ -129,8 +121,51 @@ local success, _ = pcall(function()
     end
 end)
 
-if not success or not screenGui.Parent then
+if not screenGui.Parent then
     screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+end
+
+-- 📌 ระบบแจ้งเตือน (Notification มุมล่างขวา)
+local function showNotification(message)
+    local notifFrame = Instance.new("Frame")
+    notifFrame.Size = UDim2.new(0, 260, 0, 42)
+    notifFrame.Position = UDim2.new(1, 280, 1, -60) -- ซ่อนไว้ด้านขวานอกจอตอนเริ่ม
+    notifFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+    notifFrame.BorderSizePixel = 0
+    notifFrame.Parent = screenGui
+
+    local notifCorner = Instance.new("UICorner")
+    notifCorner.CornerRadius = UDim.new(0, 8)
+    notifCorner.Parent = notifFrame
+
+    local notifStroke = Instance.new("UIStroke")
+    notifStroke.Color = Color3.fromRGB(255, 120, 0)
+    notifStroke.Thickness = 1.5
+    notifStroke.Parent = notifFrame
+
+    local notifText = Instance.new("TextLabel")
+    notifText.Size = UDim2.new(1, -12, 1, 0)
+    notifText.Position = UDim2.new(0, 12, 0, 0)
+    notifText.BackgroundTransparency = 1
+    notifText.Text = "🔥 " .. message
+    notifText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notifText.TextSize = 11
+    notifText.Font = Enum.Font.GothamBold
+    notifText.TextXAlignment = Enum.TextXAlignment.Left
+    notifText.Parent = notifFrame
+
+    -- Animation เด้งเข้ามามุมล่างขวา
+    notifFrame:TweenPosition(UDim2.new(1, -272, 1, -60), Enum.EasingDirection.Out, Enum.EasingStyle.Back, 0.4, true)
+
+    task.spawn(function()
+        task.wait(3) -- ค้างไว้ 3 วินาที
+        if notifFrame and notifFrame.Parent then
+            -- Animation สไลด์ออกขวา
+            notifFrame:TweenPosition(UDim2.new(1, 280, 1, -60), Enum.EasingDirection.In, Enum.EasingStyle.Quad, 0.3, true)
+            task.wait(0.3)
+            notifFrame:Destroy()
+        end
+    end)
 end
 
 -- 2. กรอบหน้าต่างหลัก (Main Frame)
@@ -313,8 +348,8 @@ local savedTabBtn = Instance.new("TextButton")
 savedTabBtn.Size = UDim2.new(0.5, -2, 1, -4)
 savedTabBtn.Position = UDim2.new(0.5, 0, 0, 2)
 savedTabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-savedTabBtn.Text = "⭐ เพลงที่บันทึก"
 savedTabBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
+savedTabBtn.Text = "⭐ เพลงที่บันทึก"
 savedTabBtn.TextSize = 11
 savedTabBtn.Font = Enum.Font.GothamBold
 savedTabBtn.Parent = tabBar
@@ -879,3 +914,6 @@ end
 game.DescendantAdded:Connect(function(obj)
     pcall(registerSound, obj)
 end)
+
+-- แจ้งเตือนเมื่อโหลดสคริปต์เสร็จเรียบร้อย
+showNotification("ดักไอดีเพลง 240 ทำงานเรียบร้อย")
