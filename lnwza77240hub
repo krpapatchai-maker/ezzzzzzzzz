@@ -1,1851 +1,925 @@
 local Players = game:GetService("Players")
-
 local UserInputService = game:GetService("UserInputService")
-
 local RunService = game:GetService("RunService")
-
 local MarketplaceService = game:GetService("MarketplaceService")
-
 local HttpService = game:GetService("HttpService")
-
 local SoundService = game:GetService("SoundService")
-
 local localPlayer = Players.LocalPlayer
 
-
-
 local songNameCache = {}
-
 local detectedIds = {} 
-
-local savedSongs = {}   
-
-
+local savedSongs = {}    
 
 local SAVE_FILE_NAME = "240hub_saved_songs.json"
-
 local currentPreviewSound = nil 
 
-
-
 -- ⚙️ การตั้งค่าระบบกรอง SFX และกรอง ID เลขน้อย
-
 local MIN_SONG_DURATION = 10 
-
 local MIN_ID_LENGTH = 10 -- บังคับความยาว ID ขั้นต่ำ 10 หลัก
-
 local SFX_KEYWORDS = {"sfx", "hit", "click", "footstep", "slash", "gun", "punch", "jump", "ui", "button", "explosion", "walk", "reload"}
 
-
-
 ------------------------------------------------------------------
-
 -- ระบบ อ่าน/เขียน ไฟล์ถาวร (Save/Load Data)
-
 ------------------------------------------------------------------
-
 local function saveData()
-
     if writefile then
-
         pcall(function()
-
             local jsonString = HttpService:JSONEncode(savedSongs)
-
             writefile(SAVE_FILE_NAME, jsonString)
-
         end)
-
     end
-
 end
-
-
 
 local function loadData()
-
     if readfile and isfile and isfile(SAVE_FILE_NAME) then
-
         pcall(function()
-
             local content = readfile(SAVE_FILE_NAME)
-
             savedSongs = HttpService:JSONDecode(content)
-
         end)
-
     end
-
 end
-
-
 
 loadData()
 
-
-
 local function isValidSongId(rawText)
-
     local numStr = string.match(tostring(rawText), "%d+")
-
     if not numStr then return nil end
-
     if #numStr < MIN_ID_LENGTH then
-
         return nil 
-
     end
-
     return tonumber(numStr)
-
 end
 
-
-
 local function getRealSongName(soundObj, cleanId)
-
     if songNameCache[cleanId] ~= nil then
-
         return songNameCache[cleanId]
-
     end
-
-
 
     local songName = ""
-
     local success, assetInfo = pcall(function()
-
         return MarketplaceService:GetProductInfo(cleanId, Enum.InfoType.Asset)
-
     end)
 
-
-
     if success and assetInfo and assetInfo.Name then
-
         songName = assetInfo.Name
-
     else
-
         songName = soundObj and soundObj.Name or "Custom Song"
-
     end
-
-
 
     local lowerName = string.lower(songName)
 
-
-
-    -- เพิ่มเงื่อนไขบล็อกชื่อ PowerWheels_Move (หรือถ้าชื่อมีคำนี้จะถูกบล็อกทันที)
-
     if string.find(lowerName, "powerwheels_move") then
-
         songNameCache[cleanId] = false
-
         return nil
-
     end
-
-
 
     for _, keyword in ipairs(SFX_KEYWORDS) do
-
         if string.find(lowerName, keyword) then
-
             songNameCache[cleanId] = false
-
             return nil
-
         end
-
     end
-
-
 
     if string.find(songName, "#####") then
-
         songNameCache[cleanId] = false
-
         return nil
-
     end
-
-
 
     if string.match(songName, "10%d*$") then
-
         songNameCache[cleanId] = false
-
         return nil
-
     end
-
-
 
     if string.find(lowerName, "e %s*%([%d]+%)") or string.find(lowerName, "e%s*%([%d]+%)") or lowerName == "e (1)" then
-
         songNameCache[cleanId] = false
-
         return nil
-
     end
-
-
 
     songNameCache[cleanId] = songName
-
     return songName
-
 end
-
-
 
 local function isSFX(soundObj)
-
     if not soundObj then return false end
-
     
-
-    -- ถ้าชื่อ Sound ในเกมตรงกับ PowerWheels_Move ให้ถือว่าเป็นเสียงที่ต้องบล็อกทันที
-
     if soundObj.Name and string.lower(soundObj.Name) == "powerwheels_move" then
-
         return true
-
     end
-
-
 
     if not soundObj.IsLoaded and soundObj.TimeLength == 0 then
-
         task.wait(0.1)
-
     end
-
     if soundObj.TimeLength > 0 and soundObj.TimeLength < MIN_SONG_DURATION then
-
         return true
-
     end
-
     return false
-
 end
-
-
 
 -- 1. สร้าง ScreenGui
-
 local screenGui = Instance.new("ScreenGui")
-
 screenGui.Name = "UniversalSoundDetectorUI"
-
 screenGui.ResetOnSpawn = false
 
-
-
 pcall(function()
-
     if gethui then
-
         screenGui.Parent = gethui()
-
     elseif syn and syn.protect_gui then
-
         syn.protect_gui(syn)
-
         screenGui.Parent = game:GetService("CoreGui")
-
     else
-
         screenGui.Parent = game:GetService("CoreGui")
-
     end
-
 end)
 
-
-
 if not screenGui.Parent then
-
     screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
-
 end
 
-
-
 -- 📌 ระบบแจ้งเตือน (Notification มุมล่างขวา)
-
 local function showNotification(message)
-
     local notifFrame = Instance.new("Frame")
-
     notifFrame.Size = UDim2.new(0, 260, 0, 42)
-
     notifFrame.Position = UDim2.new(1, 280, 1, -60)
-
     notifFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-
     notifFrame.BorderSizePixel = 0
-
     notifFrame.Parent = screenGui
 
-
-
     local notifCorner = Instance.new("UICorner")
-
     notifCorner.CornerRadius = UDim.new(0, 8)
-
     notifCorner.Parent = notifFrame
 
-
-
     local notifStroke = Instance.new("UIStroke")
-
     notifStroke.Color = Color3.fromRGB(255, 120, 0)
-
     notifStroke.Thickness = 1.5
-
     notifStroke.Parent = notifFrame
 
-
-
     local notifText = Instance.new("TextLabel")
-
     notifText.Size = UDim2.new(1, -12, 1, 0)
-
     notifText.Position = UDim2.new(0, 12, 0, 0)
-
     notifText.BackgroundTransparency = 1
-
     notifText.Text = "🔥 " .. message
-
     notifText.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     notifText.TextSize = 11
-
     notifText.Font = Enum.Font.GothamBold
-
     notifText.TextXAlignment = Enum.TextXAlignment.Left
-
     notifText.Parent = notifFrame
-
-
 
     notifFrame:TweenPosition(UDim2.new(1, -272, 1, -60), Enum.EasingDirection.Out, Enum.EasingStyle.Back, 0.4, true)
 
-
-
     task.spawn(function()
-
         task.wait(3)
-
         if notifFrame and notifFrame.Parent then
-
             notifFrame:TweenPosition(UDim2.new(1, 280, 1, -60), Enum.EasingDirection.In, Enum.EasingStyle.Quad, 0.3, true)
-
             task.wait(0.3)
-
             notifFrame:Destroy()
-
         end
-
     end)
-
 end
-
-
 
 -- 2. กรอบหน้าต่างหลัก (Main Frame)
-
 local mainFrame = Instance.new("Frame")
-
 mainFrame.Name = "MainFrame"
-
 mainFrame.Size = UDim2.new(0, 410, 0, 310)
-
 mainFrame.Position = UDim2.new(0.5, -205, 0.4, -155)
-
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
-
 mainFrame.BorderSizePixel = 0
-
 mainFrame.Active = true
-
 mainFrame.Parent = screenGui
 
-
-
 local frameCorner = Instance.new("UICorner")
-
 frameCorner.CornerRadius = UDim.new(0, 10)
-
 frameCorner.Parent = mainFrame
 
-
-
 local frameStroke = Instance.new("UIStroke")
-
 frameStroke.Color = Color3.fromRGB(50, 50, 68)
-
 frameStroke.Thickness = 1.5
-
 frameStroke.Parent = mainFrame
 
-
-
 -- 3. ปุ่มทางลัดเปิด/ปิดเมนู
-
 local shortcutBtn = Instance.new("TextButton")
-
 shortcutBtn.Name = "ShortcutButton"
-
 shortcutBtn.Size = UDim2.new(0, 68, 0, 68)
-
 shortcutBtn.Position = UDim2.new(0, 25, 0.5, -34)
-
 shortcutBtn.BackgroundColor3 = Color3.fromRGB(12, 10, 8)
-
 shortcutBtn.BorderSizePixel = 0
-
 shortcutBtn.Text = ""
-
 shortcutBtn.Visible = false
-
 shortcutBtn.Active = true
-
 shortcutBtn.Parent = screenGui
 
-
-
 local shortcutCorner = Instance.new("UICorner")
-
 shortcutCorner.CornerRadius = UDim.new(0, 16)
-
 shortcutCorner.Parent = shortcutBtn
 
-
-
 local fireStroke = Instance.new("UIStroke")
-
 fireStroke.Thickness = 6
-
 fireStroke.Color = Color3.fromRGB(255, 255, 255)
-
 fireStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
 fireStroke.Parent = shortcutBtn
 
-
-
 local fireGradient = Instance.new("UIGradient")
-
 fireGradient.Color = ColorSequence.new({
-
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 0)),
-
     ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 210, 0)),
-
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 40, 0)),
-
     ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 160, 0)),
-
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 0))
-
 })
-
 fireGradient.Parent = fireStroke
 
-
-
 local numberGlow = Instance.new("TextLabel")
-
 numberGlow.Name = "NumberGlow"
-
 numberGlow.Size = UDim2.new(1, 0, 1, 0)
-
 numberGlow.BackgroundTransparency = 1
-
 numberGlow.Text = "240"
-
 numberGlow.TextColor3 = Color3.fromRGB(255, 80, 0)
-
 numberGlow.TextSize = 25
-
 numberGlow.Font = Enum.Font.FredokaOne
-
 numberGlow.TextTransparency = 0.2
-
 numberGlow.Parent = shortcutBtn
 
-
-
 local glowStroke = Instance.new("UIStroke")
-
 glowStroke.Color = Color3.fromRGB(255, 120, 0)
-
 glowStroke.Thickness = 3
-
 glowStroke.Transparency = 0.2
-
 glowStroke.Parent = numberGlow
 
-
-
 local numberLabel = Instance.new("TextLabel")
-
 numberLabel.Name = "NumberLabel"
-
 numberLabel.Size = UDim2.new(1, 0, 1, 0)
-
 numberLabel.BackgroundTransparency = 1
-
 numberLabel.Text = "240"
-
 numberLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 numberLabel.TextSize = 25
-
 numberLabel.Font = Enum.Font.FredokaOne
-
 numberLabel.ZIndex = 2
-
 numberLabel.Parent = shortcutBtn
 
-
-
 local textGradient = Instance.new("UIGradient")
-
 textGradient.Rotation = 90
-
 textGradient.Color = ColorSequence.new({
-
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 150)),
-
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 140, 0)),
-
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 0))
-
 })
-
 textGradient.Parent = numberLabel
 
-
-
 local textStroke = Instance.new("UIStroke")
-
 textStroke.Color = Color3.fromRGB(40, 10, 0)
-
 textStroke.Thickness = 1.2
-
 textStroke.Parent = numberLabel
 
-
-
+-- 🟢 ส่วนที่เติมกลับมาเพื่อให้ไฟวิ่งและกระพริบ:
 task.spawn(function()
-
     local timer = 0
-
     while true do
-
         timer = timer + 0.03
-
         fireGradient.Rotation = (fireGradient.Rotation + 5) % 360
-
         local pulse = math.sin(timer * 6) * 0.15 + 0.85
-
         fireStroke.Transparency = 1 - pulse
-
         task.wait(0.016)
-
     end
-
 end)
-
-
 
 -- 4. แถบหัวข้อ (Title Bar)
-
 local titleLabel = Instance.new("TextLabel")
-
 titleLabel.Size = UDim2.new(1, -110, 0, 36)
-
 titleLabel.Position = UDim2.new(0, 12, 0, 0)
-
 titleLabel.BackgroundTransparency = 1
-
 titleLabel.Text = "สคริปนี้คือสคริปดักเพลง240"
-
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 titleLabel.TextSize = 13
-
 titleLabel.Font = Enum.Font.GothamBold
-
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-
 titleLabel.Parent = mainFrame
 
-
-
 local clearBtn = Instance.new("TextButton")
-
 clearBtn.Size = UDim2.new(0, 50, 0, 22)
-
 clearBtn.Position = UDim2.new(1, -90, 0, 7)
-
 clearBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-
 clearBtn.Text = "ล้าง"
-
 clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 clearBtn.TextSize = 11
-
 clearBtn.Font = Enum.Font.GothamBold
-
 clearBtn.Parent = mainFrame
 
-
-
 local clearCorner = Instance.new("UICorner")
-
 clearCorner.CornerRadius = UDim.new(0, 5)
-
 clearCorner.Parent = clearBtn
 
-
-
 local minimizeBtn = Instance.new("TextButton")
-
 minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-
 minimizeBtn.Position = UDim2.new(1, -35, 0, 3)
-
 minimizeBtn.BackgroundTransparency = 1
-
 minimizeBtn.Text = "━"
-
 minimizeBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
-
 minimizeBtn.TextSize = 16
-
 minimizeBtn.Font = Enum.Font.GothamBold
-
 minimizeBtn.Parent = mainFrame
 
-
-
 minimizeBtn.MouseButton1Click:Connect(function()
-
     mainFrame.Visible = false
-
     shortcutBtn.Visible = true
-
 end)
-
-
 
 shortcutBtn.MouseButton1Click:Connect(function()
-
     mainFrame.Visible = true
-
     shortcutBtn.Visible = false
-
 end)
-
-
 
 -- 5. ระบบสลับหน้า (Tab Navigation Bar)
-
 local tabBar = Instance.new("Frame")
-
 tabBar.Size = UDim2.new(1, -24, 0, 28)
-
 tabBar.Position = UDim2.new(0, 12, 0, 36)
-
 tabBar.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
-
 tabBar.BorderSizePixel = 0
-
 tabBar.Parent = mainFrame
 
-
-
 local tabCorner = Instance.new("UICorner")
-
 tabCorner.CornerRadius = UDim.new(0, 6)
-
 tabCorner.Parent = tabBar
 
-
-
 local detectorTabBtn = Instance.new("TextButton")
-
 detectorTabBtn.Size = UDim2.new(0.5, -2, 1, -4)
-
 detectorTabBtn.Position = UDim2.new(0, 2, 0, 2)
-
 detectorTabBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
 detectorTabBtn.Text = "ดักจับเพลง"
-
 detectorTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 detectorTabBtn.TextSize = 11
-
 detectorTabBtn.Font = Enum.Font.GothamBold
-
 detectorTabBtn.Parent = tabBar
 
-
-
 local detectorBtnCorner = Instance.new("UICorner")
-
 detectorBtnCorner.CornerRadius = UDim.new(0, 5)
-
 detectorBtnCorner.Parent = detectorTabBtn
 
-
-
 local savedTabBtn = Instance.new("TextButton")
-
 savedTabBtn.Size = UDim2.new(0.5, -2, 1, -4)
-
 savedTabBtn.Position = UDim2.new(0.5, 0, 0, 2)
-
 savedTabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-
 savedTabBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
-
 savedTabBtn.Text = "เพลงที่บันทึก"
-
 savedTabBtn.TextSize = 11
-
 savedTabBtn.Font = Enum.Font.GothamBold
-
 savedTabBtn.Parent = tabBar
 
-
-
 local savedBtnCorner = Instance.new("UICorner")
-
 savedBtnCorner.CornerRadius = UDim.new(0, 5)
-
 savedBtnCorner.Parent = savedTabBtn
 
-
-
 -- 6. หน้าต่าง ScrollingFrame ทั้ง 2 หน้า
-
 local detectorFrame = Instance.new("ScrollingFrame")
-
 detectorFrame.Size = UDim2.new(1, -24, 0, 225)
-
 detectorFrame.Position = UDim2.new(0, 12, 0, 72)
-
 detectorFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
-
 detectorFrame.BorderSizePixel = 0
-
 detectorFrame.ScrollBarThickness = 4
-
 detectorFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-
 detectorFrame.Visible = true
-
 detectorFrame.Parent = mainFrame
 
-
-
 local detectorCorner = Instance.new("UICorner")
-
 detectorCorner.CornerRadius = UDim.new(0, 6)
-
 detectorCorner.Parent = detectorFrame
 
-
-
 local detectorLayout = Instance.new("UIListLayout")
-
 detectorLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
 detectorLayout.Padding = UDim.new(0, 6)
-
 detectorLayout.Parent = detectorFrame
 
-
-
 local detectorPadding = Instance.new("UIPadding")
-
 detectorPadding.PaddingTop = UDim.new(0, 6)
-
 detectorPadding.PaddingLeft = UDim.new(0, 6)
-
 detectorPadding.PaddingRight = UDim.new(0, 6)
-
 detectorPadding.Parent = detectorFrame
 
-
-
 detectorLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-
     detectorFrame.CanvasSize = UDim2.new(0, 0, 0, detectorLayout.AbsoluteContentSize.Y + 12)
-
 end)
-
-
 
 local savedContainer = Instance.new("Frame")
-
 savedContainer.Size = UDim2.new(1, -24, 0, 225)
-
 savedContainer.Position = UDim2.new(0, 12, 0, 72)
-
 savedContainer.BackgroundTransparency = 1
-
 savedContainer.Visible = false
-
 savedContainer.Parent = mainFrame
 
-
-
 local inputFrame = Instance.new("Frame")
-
 inputFrame.Size = UDim2.new(1, 0, 0, 32)
-
 inputFrame.Position = UDim2.new(0, 0, 0, 0)
-
 inputFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-
 inputFrame.BorderSizePixel = 0
-
 inputFrame.Parent = savedContainer
 
-
-
 local inputCorner = Instance.new("UICorner")
-
 inputCorner.CornerRadius = UDim.new(0, 6)
-
 inputCorner.Parent = inputFrame
 
-
-
 local idTextBox = Instance.new("TextBox")
-
 idTextBox.Size = UDim2.new(1, -85, 1, 0)
-
 idTextBox.Position = UDim2.new(0, 10, 0, 0)
-
 idTextBox.BackgroundTransparency = 1
-
 idTextBox.PlaceholderText = "วาง ID เพลง (10 หลักขึ้นไป)..."
-
 idTextBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
-
 idTextBox.Text = ""
-
 idTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 idTextBox.TextSize = 11
-
 idTextBox.Font = Enum.Font.GothamMedium
-
 idTextBox.TextXAlignment = Enum.TextXAlignment.Left
-
 idTextBox.Parent = inputFrame
 
-
-
 local addBtn = Instance.new("TextButton")
-
 addBtn.Size = UDim2.new(0, 70, 0, 24)
-
 addBtn.Position = UDim2.new(1, -74, 0, 4)
-
 addBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
 addBtn.Text = "+ บันทึก"
-
 addBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 addBtn.TextSize = 10
-
 addBtn.Font = Enum.Font.GothamBold
-
 addBtn.Parent = inputFrame
 
-
-
 local addCorner = Instance.new("UICorner")
-
 addCorner.CornerRadius = UDim.new(0, 5)
-
 addCorner.Parent = addBtn
 
-
-
 local savedFrame = Instance.new("ScrollingFrame")
-
 savedFrame.Size = UDim2.new(1, 0, 1, -38)
-
 savedFrame.Position = UDim2.new(0, 0, 0, 38)
-
 savedFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
-
 savedFrame.BorderSizePixel = 0
-
 savedFrame.ScrollBarThickness = 4
-
 savedFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-
 savedFrame.Parent = savedContainer
 
-
-
 local savedCorner = Instance.new("UICorner")
-
 savedCorner.CornerRadius = UDim.new(0, 6)
-
 savedCorner.Parent = savedFrame
 
-
-
 local savedLayout = Instance.new("UIListLayout")
-
 savedLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
 savedLayout.Padding = UDim.new(0, 6)
-
 savedLayout.Parent = savedFrame
 
-
-
 local savedPadding = Instance.new("UIPadding")
-
 savedPadding.PaddingTop = UDim.new(0, 6)
-
 savedPadding.PaddingLeft = UDim.new(0, 6)
-
 savedPadding.PaddingRight = UDim.new(0, 6)
-
 savedPadding.Parent = savedFrame
 
-
-
 savedLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-
     savedFrame.CanvasSize = UDim2.new(0, 0, 0, savedLayout.AbsoluteContentSize.Y + 12)
-
 end)
-
-
 
 detectorTabBtn.MouseButton1Click:Connect(function()
-
     detectorFrame.Visible = true
-
     savedContainer.Visible = false
-
     detectorTabBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
     detectorTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     savedTabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-
     savedTabBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
-
 end)
-
-
 
 savedTabBtn.MouseButton1Click:Connect(function()
-
     detectorFrame.Visible = false
-
     savedContainer.Visible = true
-
     savedTabBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
     savedTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     detectorTabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-
     detectorTabBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
-
 end)
-
-
 
 clearBtn.MouseButton1Click:Connect(function()
-
     for _, child in ipairs(detectorFrame:GetChildren()) do
-
         if child:IsA("Frame") then
-
             child:Destroy()
-
         end
-
     end
-
     table.clear(detectedIds)
-
 end)
-
-
 
 -- 7. ระบบการลากหน้าต่าง
-
 local function makeDraggable(guiObject)
-
     local dragging = false
-
     local dragInput, dragStart, startPos
 
-
-
     guiObject.InputBegan:Connect(function(input)
-
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-
             dragging = true
-
             dragStart = input.Position
-
             startPos = guiObject.Position
 
-
-
             input.Changed:Connect(function()
-
                 if input.UserInputState == Enum.UserInputState.End then
-
                     dragging = false
-
                 end
-
             end)
-
         end
-
     end)
-
-
 
     guiObject.InputChanged:Connect(function(input)
-
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-
             dragInput = input
-
         end
-
     end)
-
-
 
     UserInputService.InputChanged:Connect(function(input)
-
         if input == dragInput and dragging then
-
             local delta = input.Position - dragStart
-
             guiObject.Position = UDim2.new(
-
                 startPos.X.Scale, 
-
                 startPos.X.Offset + delta.X, 
-
                 startPos.Y.Scale, 
-
                 startPos.Y.Offset + delta.Y
-
             )
-
         end
-
     end)
-
 end
-
-
 
 makeDraggable(mainFrame)
-
 makeDraggable(shortcutBtn)
 
-
-
 -- 8. ระบบตรวจจับผู้เล่น และ การสร้างการ์ดเพลง
-
 local function getPlayerFromSound(sound)
-
     local curr = sound.Parent
-
     while curr and curr ~= game do
-
         local player = Players:GetPlayerFromCharacter(curr)
-
         if player then return player end
 
-
-
         if curr:IsA("Backpack") and curr.Parent:IsA("Player") then
-
             return curr.Parent
-
         end
-
-
 
         if curr:IsA("Tool") or curr:IsA("Model") or curr:IsA("Accoutrement") then
-
             if curr.Parent then
-
                 local p = Players:GetPlayerFromCharacter(curr.Parent)
-
                 if p then return p end
-
             end
-
         end
-
-
 
         curr = curr.Parent
-
     end
-
     return nil
-
 end
-
-
 
 local function stopCurrentPreview()
-
     if currentPreviewSound then
-
         currentPreviewSound:Stop()
-
         currentPreviewSound:Destroy()
-
         currentPreviewSound = nil
-
     end
-
 end
-
-
 
 local function createSavedCardUI(cleanId, realName, ownerName)
-
     local strId = tostring(cleanId)
-
     if savedFrame:FindFirstChild("Saved_" .. strId) then return end
 
-
-
     local card = Instance.new("Frame")
-
     card.Name = "Saved_" .. strId
-
     card.Size = UDim2.new(1, 0, 0, 58)
-
     card.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-
     card.BorderSizePixel = 0
-
     card.Parent = savedFrame
 
-
-
     local cardCorner = Instance.new("UICorner")
-
     cardCorner.CornerRadius = UDim.new(0, 8)
-
     cardCorner.Parent = card
 
-
-
     local cardStroke = Instance.new("UIStroke")
-
     cardStroke.Color = Color3.fromRGB(42, 42, 54)
-
     cardStroke.Thickness = 1
-
     cardStroke.Parent = card
 
-
-
     local ownerLabel = Instance.new("TextLabel")
-
     ownerLabel.Size = UDim2.new(1, -185, 0, 16)
-
     ownerLabel.Position = UDim2.new(0, 10, 0, 6)
-
     ownerLabel.BackgroundTransparency = 1
-
     ownerLabel.Text = "👤 " .. ownerName
-
     ownerLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-
     ownerLabel.TextSize = 11
-
     ownerLabel.Font = Enum.Font.GothamBold
-
     ownerLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     ownerLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
     ownerLabel.Parent = card
 
-
-
     local soundNameLabel = Instance.new("TextLabel")
-
     soundNameLabel.Size = UDim2.new(1, -185, 0, 14)
-
     soundNameLabel.Position = UDim2.new(0, 10, 0, 23)
-
     soundNameLabel.BackgroundTransparency = 1
-
     soundNameLabel.Text = "🎵 " .. realName
-
     soundNameLabel.TextColor3 = Color3.fromRGB(225, 225, 235)
-
     soundNameLabel.TextSize = 10
-
     soundNameLabel.Font = Enum.Font.GothamMedium
-
     soundNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     soundNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
     soundNameLabel.Parent = card
 
-
-
     local idLabel = Instance.new("TextLabel")
-
     idLabel.Size = UDim2.new(1, -185, 0, 14)
-
     idLabel.Position = UDim2.new(0, 10, 0, 38)
-
     idLabel.BackgroundTransparency = 1
-
     idLabel.Text = "ID: " .. cleanId
-
     idLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
-
     idLabel.TextSize = 10
-
     idLabel.Font = Enum.Font.Code
-
     idLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     idLabel.Parent = card
 
-
-
     local playBtn = Instance.new("TextButton")
-
     playBtn.Size = UDim2.new(0, 52, 0, 34)
-
     playBtn.Position = UDim2.new(1, -172, 0.5, -17)
-
     playBtn.BackgroundColor3 = Color3.fromRGB(15, 135, 230)
-
     playBtn.Text = "▶️ ฟัง"
-
     playBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     playBtn.TextSize = 10
-
     playBtn.Font = Enum.Font.GothamBold
-
     playBtn.Parent = card
 
-
-
     local playCorner = Instance.new("UICorner")
-
     playCorner.CornerRadius = UDim.new(0, 6)
-
     playCorner.Parent = playBtn
 
-
-
     local copyBtn = Instance.new("TextButton")
-
     copyBtn.Size = UDim2.new(0, 54, 0, 34)
-
     copyBtn.Position = UDim2.new(1, -114, 0.5, -17)
-
     copyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-
     copyBtn.Text = "📋 คัดลอก"
-
     copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     copyBtn.TextSize = 10
-
     copyBtn.Font = Enum.Font.GothamBold
-
     copyBtn.Parent = card
 
-
-
     local btnCorner = Instance.new("UICorner")
-
     btnCorner.CornerRadius = UDim.new(0, 6)
-
     btnCorner.Parent = copyBtn
 
-
-
     local delBtn = Instance.new("TextButton")
-
     delBtn.Size = UDim2.new(0, 50, 0, 34)
-
     delBtn.Position = UDim2.new(1, -55, 0.5, -17)
-
     delBtn.BackgroundColor3 = Color3.fromRGB(220, 55, 65)
-
     delBtn.Text = "❌ ลบ"
-
     delBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
     delBtn.TextSize = 10
-
     delBtn.Font = Enum.Font.GothamBold
-
     delBtn.Parent = card
 
-
-
     local delCorner = Instance.new("UICorner")
-
     delCorner.CornerRadius = UDim.new(0, 6)
-
     delCorner.Parent = delBtn
 
-
-
     playBtn.MouseButton1Click:Connect(function()
-
         if playBtn.Text == "⏹️ หยุด" then
-
             stopCurrentPreview()
-
             playBtn.Text = "▶️ ฟัง"
-
             playBtn.BackgroundColor3 = Color3.fromRGB(15, 135, 230)
-
         else
-
             stopCurrentPreview()
-
-
 
             for _, c in ipairs(savedFrame:GetChildren()) do
-
                 if c:IsA("Frame") then
-
                     for _, child in ipairs(c:GetChildren()) do
-
                         if child:IsA("TextButton") and child.Text == "⏹️ หยุด" then
-
                             child.Text = "▶️ ฟัง"
-
                             child.BackgroundColor3 = Color3.fromRGB(15, 135, 230)
-
                         end
-
                     end
-
                 end
-
             end
 
-
-
             local previewSound = Instance.new("Sound")
-
             previewSound.Name = "LocalPreviewSound"
-
             previewSound.SoundId = "rbxassetid://" .. cleanId
-
             previewSound.Volume = 1
-
             previewSound.Parent = SoundService
-
             
-
             currentPreviewSound = previewSound
-
             previewSound:Play()
 
-
-
             playBtn.Text = "⏹️ หยุด"
-
             playBtn.BackgroundColor3 = Color3.fromRGB(240, 120, 20)
 
-
-
             previewSound.Ended:Connect(function()
-
                 if currentPreviewSound == previewSound then
-
                     currentPreviewSound = nil
-
                     previewSound:Destroy()
-
                     playBtn.Text = "▶️ ฟัง"
-
                     playBtn.BackgroundColor3 = Color3.fromRGB(15, 135, 230)
-
                 end
-
             end)
-
         end
-
     end)
-
-
 
     copyBtn.MouseButton1Click:Connect(function()
-
         if setclipboard then
-
             setclipboard(tostring(cleanId))
-
             copyBtn.Text = "✓ เสร็จ!"
-
             copyBtn.BackgroundColor3 = Color3.fromRGB(45, 180, 110)
-
             task.wait(1)
-
             copyBtn.Text = "📋 คัดลอก"
-
             copyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-
         end
-
     end)
-
-
 
     delBtn.MouseButton1Click:Connect(function()
-
         if currentPreviewSound and currentPreviewSound.SoundId == "rbxassetid://" .. cleanId then
-
             stopCurrentPreview()
-
         end
-
         savedSongs[strId] = nil
-
         saveData()
-
         card:Destroy()
-
     end)
-
 end
-
-
 
 local function addSavedSong(cleanId, realName, ownerName)
-
     local strId = tostring(cleanId)
-
     savedSongs[strId] = {
-
         name = realName,
-
         owner = ownerName
-
     }
-
     saveData()
-
     createSavedCardUI(cleanId, realName, ownerName)
-
 end
-
-
 
 for strId, info in pairs(savedSongs) do
-
     createSavedCardUI(tonumber(strId), info.name, info.owner)
-
 end
 
-
-
 addBtn.MouseButton1Click:Connect(function()
-
     local cleanId = isValidSongId(idTextBox.Text)
-
     if cleanId then
-
         task.spawn(function()
-
             local realName = getRealSongName(nil, cleanId) or "Custom ID"
-
             addSavedSong(cleanId, realName, "บันทึกโดยผู้ใช้")
-
             idTextBox.Text = ""
-
         end)
-
     else
-
         idTextBox.Text = ""
-
         idTextBox.PlaceholderText = "⚠️ ต้อง 10 หลักขึ้นไปเท่านั้น!"
-
         task.wait(1.5)
-
         idTextBox.PlaceholderText = "วาง ID เพลง (10 หลักขึ้นไป)..."
-
     end
-
 end)
 
-
-
 local function createSoundCard(soundObj)
-
     local owner = getPlayerFromSound(soundObj)
-
     if not owner then return end
-
-
 
     if isSFX(soundObj) then return end
 
-
-
     local cleanId = isValidSongId(soundObj.SoundId or "")
-
     if not cleanId then return end
-
-
 
     if detectedIds[cleanId] then return end
 
-
-
     task.spawn(function()
-
         local realName = getRealSongName(soundObj, cleanId)
-
         if not realName then return end
-
-
 
         detectedIds[cleanId] = true
 
-
-
         local ownerText = owner.DisplayName .. " (@" .. owner.Name .. ")"
 
-
-
         local card = Instance.new("Frame")
-
         card.Size = UDim2.new(1, 0, 0, 52)
-
         card.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-
         card.BorderSizePixel = 0
-
         card.Parent = detectorFrame
 
-
-
         local cardCorner = Instance.new("UICorner")
-
         cardCorner.CornerRadius = UDim.new(0, 6)
-
         cardCorner.Parent = card
 
-
-
         local ownerLabel = Instance.new("TextLabel")
-
         ownerLabel.Size = UDim2.new(1, -125, 0, 16)
-
         ownerLabel.Position = UDim2.new(0, 10, 0, 4)
-
         ownerLabel.BackgroundTransparency = 1
-
         ownerLabel.Text = "👤 เปิดโดย: " .. ownerText
-
         ownerLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-
         ownerLabel.TextSize = 11
-
         ownerLabel.Font = Enum.Font.GothamBold
-
         ownerLabel.TextXAlignment = Enum.TextXAlignment.Left
-
         ownerLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
         ownerLabel.Parent = card
 
-
-
         local soundNameLabel = Instance.new("TextLabel")
-
         soundNameLabel.Size = UDim2.new(1, -125, 0, 14)
-
         soundNameLabel.Position = UDim2.new(0, 10, 0, 20)
-
         soundNameLabel.BackgroundTransparency = 1
-
         soundNameLabel.Text = "🎵 ชื่อเพลง: " .. realName
-
         soundNameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-
         soundNameLabel.TextSize = 10
-
         soundNameLabel.Font = Enum.Font.GothamMedium
-
         soundNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-
         soundNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
         soundNameLabel.Parent = card
 
-
-
         local idLabel = Instance.new("TextLabel")
-
         idLabel.Size = UDim2.new(1, -125, 0, 14)
-
         idLabel.Position = UDim2.new(0, 10, 0, 34)
-
         idLabel.BackgroundTransparency = 1
-
         idLabel.Text = "ID: " .. cleanId
-
         idLabel.TextColor3 = Color3.fromRGB(120, 220, 150)
-
         idLabel.TextSize = 10
-
         idLabel.Font = Enum.Font.Code
-
         idLabel.TextXAlignment = Enum.TextXAlignment.Left
-
         idLabel.Parent = card
 
-
-
         local copyBtn = Instance.new("TextButton")
-
         copyBtn.Size = UDim2.new(0, 55, 0, 32)
-
         copyBtn.Position = UDim2.new(1, -118, 0.5, -16)
-
         copyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-
         copyBtn.Text = "📋 คัดลอก"
-
         copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
         copyBtn.TextSize = 10
-
         copyBtn.Font = Enum.Font.GothamBold
-
         copyBtn.Parent = card
 
-
-
         local btnCorner = Instance.new("UICorner")
-
         btnCorner.CornerRadius = UDim.new(0, 5)
-
         btnCorner.Parent = copyBtn
 
-
-
         copyBtn.MouseButton1Click:Connect(function()
-
             if setclipboard then
-
                 setclipboard(tostring(cleanId))
-
                 copyBtn.Text = "✓ เสร็จ!"
-
                 copyBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
-
                 task.wait(1)
-
                 copyBtn.Text = "📋 คัดลอก"
-
                 copyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-
             end
-
         end)
-
-
 
         local saveCardBtn = Instance.new("TextButton")
-
         saveCardBtn.Size = UDim2.new(0, 55, 0, 32)
-
         saveCardBtn.Position = UDim2.new(1, -60, 0.5, -16)
-
         saveCardBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
         saveCardBtn.Text = "⭐ เซฟ"
-
         saveCardBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
         saveCardBtn.TextSize = 10
-
         saveCardBtn.Font = Enum.Font.GothamBold
-
         saveCardBtn.Parent = card
 
-
-
         local saveCorner = Instance.new("UICorner")
-
         saveCorner.CornerRadius = UDim.new(0, 5)
-
         saveCorner.Parent = saveCardBtn
 
-
-
         saveCardBtn.MouseButton1Click:Connect(function()
-
             addSavedSong(cleanId, realName, ownerText)
-
             saveCardBtn.Text = "เรียบร้อย!"
-
             saveCardBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
-
             task.wait(1)
-
             saveCardBtn.Text = "⭐ เซฟ"
-
             saveCardBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-
         end)
-
     end)
-
 end
-
-
 
 -- 9. ระบบตรวจจับความเร็วสูง
-
 local function registerSound(sound)
-
     if not sound:IsA("Sound") then return end
 
-
-
     if sound.IsPlaying or sound.TimePosition > 0 then
-
         createSoundCard(sound)
-
     end
-
-
 
     sound:GetPropertyChangedSignal("IsPlaying"):Connect(function()
-
         if sound.IsPlaying then createSoundCard(sound) end
-
     end)
-
-
 
     sound:GetPropertyChangedSignal("TimePosition"):Connect(function()
-
         if sound.TimePosition > 0 and sound.IsPlaying then createSoundCard(sound) end
-
     end)
-
-
 
     sound:GetPropertyChangedSignal("SoundId"):Connect(function()
-
         if sound.IsPlaying then createSoundCard(sound) end
-
     end)
-
 end
-
-
 
 task.spawn(function()
-
     while true do
-
         for _, player in ipairs(Players:GetPlayers()) do
-
             if player.Character then
-
                 for _, item in ipairs(player.Character:GetDescendants()) do
-
                     if item:IsA("Sound") and item.IsPlaying then
-
                         createSoundCard(item)
-
                     end
-
                 end
-
             end
-
             if player:FindFirstChild("Backpack") then
-
                 for _, item in ipairs(player.Backpack:GetDescendants()) do
-
                     if item:IsA("Sound") and item.IsPlaying then
-
                         createSoundCard(item)
-
                     end
-
                 end
-
             end
-
         end
-
         task.wait(0.3)
-
     end
-
 end)
 
-
-
 for _, obj in ipairs(game:GetDescendants()) do
-
     pcall(registerSound, obj)
-
 end
 
-
-
 game.DescendantAdded:Connect(function(obj)
-
     pcall(registerSound, obj)
-
 end)
