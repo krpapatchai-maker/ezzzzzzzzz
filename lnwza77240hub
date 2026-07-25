@@ -68,6 +68,12 @@ local function getRealSongName(soundObj, cleanId)
 
     local lowerName = string.lower(songName)
 
+    -- เพิ่มเงื่อนไขบล็อกชื่อ PowerWheels_Move (หรือถ้าชื่อมีคำนี้จะถูกบล็อกทันที)
+    if string.find(lowerName, "powerwheels_move") then
+        songNameCache[cleanId] = false
+        return nil
+    end
+
     for _, keyword in ipairs(SFX_KEYWORDS) do
         if string.find(lowerName, keyword) then
             songNameCache[cleanId] = false
@@ -96,6 +102,12 @@ end
 
 local function isSFX(soundObj)
     if not soundObj then return false end
+    
+    -- ถ้าชื่อ Sound ในเกมตรงกับ PowerWheels_Move ให้ถือว่าเป็นเสียงที่ต้องบล็อกทันที
+    if soundObj.Name and string.lower(soundObj.Name) == "powerwheels_move" then
+        return true
+    end
+
     if not soundObj.IsLoaded and soundObj.TimeLength == 0 then
         task.wait(0.1)
     end
@@ -129,7 +141,7 @@ end
 local function showNotification(message)
     local notifFrame = Instance.new("Frame")
     notifFrame.Size = UDim2.new(0, 260, 0, 42)
-    notifFrame.Position = UDim2.new(1, 280, 1, -60) -- ซ่อนไว้ด้านขวานอกจอตอนเริ่ม
+    notifFrame.Position = UDim2.new(1, 280, 1, -60)
     notifFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
     notifFrame.BorderSizePixel = 0
     notifFrame.Parent = screenGui
@@ -154,13 +166,11 @@ local function showNotification(message)
     notifText.TextXAlignment = Enum.TextXAlignment.Left
     notifText.Parent = notifFrame
 
-    -- Animation เด้งเข้ามามุมล่างขวา
     notifFrame:TweenPosition(UDim2.new(1, -272, 1, -60), Enum.EasingDirection.Out, Enum.EasingStyle.Back, 0.4, true)
 
     task.spawn(function()
-        task.wait(3) -- ค้างไว้ 3 วินาที
+        task.wait(3)
         if notifFrame and notifFrame.Parent then
-            -- Animation สไลด์ออกขวา
             notifFrame:TweenPosition(UDim2.new(1, 280, 1, -60), Enum.EasingDirection.In, Enum.EasingStyle.Quad, 0.3, true)
             task.wait(0.3)
             notifFrame:Destroy()
@@ -277,7 +287,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -110, 0, 36)
 titleLabel.Position = UDim2.new(0, 12, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "240HUB เทสระบบยุ"
+titleLabel.Text = "240HUB"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.GothamBold
@@ -288,7 +298,7 @@ local clearBtn = Instance.new("TextButton")
 clearBtn.Size = UDim2.new(0, 50, 0, 22)
 clearBtn.Position = UDim2.new(1, -90, 0, 7)
 clearBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-clearBtn.Text = "ล้าง"
+clearBtn.Text = "🗑️ ล้าง"
 clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 clearBtn.TextSize = 11
 clearBtn.Font = Enum.Font.GothamBold
@@ -915,5 +925,4 @@ game.DescendantAdded:Connect(function(obj)
     pcall(registerSound, obj)
 end)
 
--- แจ้งเตือนเมื่อโหลดสคริปต์เสร็จเรียบร้อย
 showNotification("ดักไอดีเพลง 240 ทำงานเรียบร้อย")
