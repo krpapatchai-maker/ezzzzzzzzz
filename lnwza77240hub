@@ -269,7 +269,7 @@ textStroke.Color = Color3.fromRGB(40, 10, 0)
 textStroke.Thickness = 1.2
 textStroke.Parent = numberLabel
 
--- 🟢 ส่วนที่เติมกลับมาเพื่อให้ไฟวิ่งและกระพริบ:
+-- 🟢 อัปเดตไฟวิ่งและกระพริบ
 task.spawn(function()
     local timer = 0
     while true do
