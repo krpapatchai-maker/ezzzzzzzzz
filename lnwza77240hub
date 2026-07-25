@@ -8,7 +8,7 @@ local localPlayer = Players.LocalPlayer
 
 local songNameCache = {}
 local detectedIds = {} 
-local savedSongs = {}   
+local savedSongs = {}    
 
 local SAVE_FILE_NAME = "240hub_saved_songs.json"
 local currentPreviewSound = nil 
@@ -63,12 +63,11 @@ local function getRealSongName(soundObj, cleanId)
     if success and assetInfo and assetInfo.Name then
         songName = assetInfo.Name
     else
-        songName = soundObj and soundObj.Name or "Custom Song"
+        songName = soundObj and soundObj.Name or ("Song ID: " .. tostring(cleanId))
     end
 
     local lowerName = string.lower(songName)
 
-    -- เพิ่มเงื่อนไขบล็อกชื่อ PowerWheels_Move (หรือถ้าชื่อมีคำนี้จะถูกบล็อกทันที)
     if string.find(lowerName, "powerwheels_move") then
         songNameCache[cleanId] = false
         return nil
@@ -86,16 +85,6 @@ local function getRealSongName(soundObj, cleanId)
         return nil
     end
 
-    if string.match(songName, "10%d*$") then
-        songNameCache[cleanId] = false
-        return nil
-    end
-
-    if string.find(lowerName, "e %s*%([%d]+%)") or string.find(lowerName, "e%s*%([%d]+%)") or lowerName == "e (1)" then
-        songNameCache[cleanId] = false
-        return nil
-    end
-
     songNameCache[cleanId] = songName
     return songName
 end
@@ -103,14 +92,16 @@ end
 local function isSFX(soundObj)
     if not soundObj then return false end
     
-    -- ถ้าชื่อ Sound ในเกมตรงกับ PowerWheels_Move ให้ถือว่าเป็นเสียงที่ต้องบล็อกทันที
     if soundObj.Name and string.lower(soundObj.Name) == "powerwheels_move" then
         return true
     end
 
-    if not soundObj.IsLoaded and soundObj.TimeLength == 0 then
-        task.wait(0.1)
-    end
+    pcall(function()
+        if not soundObj.IsLoaded and soundObj.TimeLength == 0 then
+            soundObj:Load()
+        end
+    end)
+
     if soundObj.TimeLength > 0 and soundObj.TimeLength < MIN_SONG_DURATION then
         return true
     end
@@ -126,7 +117,7 @@ pcall(function()
     if gethui then
         screenGui.Parent = gethui()
     elseif syn and syn.protect_gui then
-        syn.protect_gui(syn)
+        syn.protect_gui(screenGui)
         screenGui.Parent = game:GetService("CoreGui")
     else
         screenGui.Parent = game:GetService("CoreGui")
@@ -229,23 +220,6 @@ fireGradient.Color = ColorSequence.new({
 })
 fireGradient.Parent = fireStroke
 
-local numberGlow = Instance.new("TextLabel")
-numberGlow.Name = "NumberGlow"
-numberGlow.Size = UDim2.new(1, 0, 1, 0)
-numberGlow.BackgroundTransparency = 1
-numberGlow.Text = "240"
-numberGlow.TextColor3 = Color3.fromRGB(255, 80, 0)
-numberGlow.TextSize = 25
-numberGlow.Font = Enum.Font.FredokaOne
-numberGlow.TextTransparency = 0.2
-numberGlow.Parent = shortcutBtn
-
-local glowStroke = Instance.new("UIStroke")
-glowStroke.Color = Color3.fromRGB(255, 120, 0)
-glowStroke.Thickness = 3
-glowStroke.Transparency = 0.2
-glowStroke.Parent = numberGlow
-
 local numberLabel = Instance.new("TextLabel")
 numberLabel.Name = "NumberLabel"
 numberLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -265,22 +239,6 @@ textGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 0))
 })
 textGradient.Parent = numberLabel
-
-local textStroke = Instance.new("UIStroke")
-textStroke.Color = Color3.fromRGB(40, 10, 0)
-textStroke.Thickness = 1.2
-textStroke.Parent = numberLabel
-
-task.spawn(function()
-    local timer = 0
-    while true do
-        timer = timer + 0.03
-        fireGradient.Rotation = (fireGradient.Rotation + 5) % 360
-        local pulse = math.sin(timer * 6) * 0.15 + 0.85
-        fireStroke.Transparency = 1 - pulse
-        task.wait(0.016)
-    end
-end)
 
 -- 4. แถบหัวข้อ (Title Bar)
 local titleLabel = Instance.new("TextLabel")
@@ -594,7 +552,7 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     ownerLabel.Size = UDim2.new(1, -185, 0, 16)
     ownerLabel.Position = UDim2.new(0, 10, 0, 6)
     ownerLabel.BackgroundTransparency = 1
-    ownerLabel.Text = "👤 " .. ownerName
+    ownerLabel.Text = "👤 " .. tostring(ownerName)
     ownerLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
     ownerLabel.TextSize = 11
     ownerLabel.Font = Enum.Font.GothamBold
@@ -606,7 +564,7 @@ local function createSavedCardUI(cleanId, realName, ownerName)
     soundNameLabel.Size = UDim2.new(1, -185, 0, 14)
     soundNameLabel.Position = UDim2.new(0, 10, 0, 23)
     soundNameLabel.BackgroundTransparency = 1
-    soundNameLabel.Text = "🎵 " .. realName
+    soundNameLabel.Text = "🎵 " .. tostring(realName)
     soundNameLabel.TextColor3 = Color3.fromRGB(225, 225, 235)
     soundNameLabel.TextSize = 10
     soundNameLabel.Font = Enum.Font.GothamMedium
@@ -874,7 +832,6 @@ local function createSoundCard(soundObj)
     end)
 end
 
--- 9. ระบบตรวจจับความเร็วสูง
 local function registerSound(sound)
     if not sound:IsA("Sound") then return end
 
