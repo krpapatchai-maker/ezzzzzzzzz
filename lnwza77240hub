@@ -144,7 +144,7 @@ if not screenGui.Parent then
     screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 end
 
--- 📌 ระบบแจ้งเตือน (Notification มุมล่างขวา) + ป้ายข้อความ "รันสคริป240เรียบร้อยเเล้วค้าบบ"
+-- 📌 ระบบแจ้งเตือน (Notification มุมล่างขวา)
 local function showNotification(message)
     local notifFrame = Instance.new("Frame")
     notifFrame.Size = UDim2.new(0, 260, 0, 42)
@@ -204,12 +204,12 @@ frameStroke.Color = Color3.fromRGB(50, 50, 68)
 frameStroke.Thickness = 1.5
 frameStroke.Parent = mainFrame
 
--- 3. ปุ่มทางลัดเปิด/ปิดเมนู
+-- 3. ปุ่มทางลัดเปิด/ปิดเมนู (ปรับปรุงขอบไฟให้สวยและเนียนขึ้น)
 local shortcutBtn = Instance.new("TextButton")
 shortcutBtn.Name = "ShortcutButton"
 shortcutBtn.Size = UDim2.new(0, 68, 0, 68)
 shortcutBtn.Position = UDim2.new(0, 25, 0.5, -34)
-shortcutBtn.BackgroundColor3 = Color3.fromRGB(12, 10, 8)
+shortcutBtn.BackgroundColor3 = Color3.fromRGB(15, 14, 18)
 shortcutBtn.BorderSizePixel = 0
 shortcutBtn.Text = ""
 shortcutBtn.Visible = false
@@ -220,19 +220,19 @@ local shortcutCorner = Instance.new("UICorner")
 shortcutCorner.CornerRadius = UDim.new(0, 16)
 shortcutCorner.Parent = shortcutBtn
 
+-- ✨ ปรับลดความหนาให้พอดี และใช้สีไล่ระดับแบบนีออนพรีเมียม
 local fireStroke = Instance.new("UIStroke")
-fireStroke.Thickness = 6
+fireStroke.Thickness = 3.5
 fireStroke.Color = Color3.fromRGB(255, 255, 255)
 fireStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 fireStroke.Parent = shortcutBtn
 
 local fireGradient = Instance.new("UIGradient")
 fireGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 0)),
-    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 210, 0)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 40, 0)),
-    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 160, 0)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 0))
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 140, 0)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(255, 220, 50)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(255, 90, 0)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 140, 0))
 })
 fireGradient.Parent = fireStroke
 
@@ -241,16 +241,16 @@ numberGlow.Name = "NumberGlow"
 numberGlow.Size = UDim2.new(1, 0, 1, 0)
 numberGlow.BackgroundTransparency = 1
 numberGlow.Text = "240"
-numberGlow.TextColor3 = Color3.fromRGB(255, 80, 0)
+numberGlow.TextColor3 = Color3.fromRGB(255, 100, 0)
 numberGlow.TextSize = 25
 numberGlow.Font = Enum.Font.FredokaOne
-numberGlow.TextTransparency = 0.2
+numberGlow.TextTransparency = 0.4
 numberGlow.Parent = shortcutBtn
 
 local glowStroke = Instance.new("UIStroke")
-glowStroke.Color = Color3.fromRGB(255, 120, 0)
-glowStroke.Thickness = 3
-glowStroke.Transparency = 0.2
+glowStroke.Color = Color3.fromRGB(255, 140, 0)
+glowStroke.Thickness = 2
+glowStroke.Transparency = 0.4
 glowStroke.Parent = numberGlow
 
 local numberLabel = Instance.new("TextLabel")
@@ -267,24 +267,24 @@ numberLabel.Parent = shortcutBtn
 local textGradient = Instance.new("UIGradient")
 textGradient.Rotation = 90
 textGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 150)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 140, 0)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 0))
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 180)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 150, 20)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 80, 0))
 })
 textGradient.Parent = numberLabel
 
 local textStroke = Instance.new("UIStroke")
-textStroke.Color = Color3.fromRGB(40, 10, 0)
+textStroke.Color = Color3.fromRGB(50, 15, 0)
 textStroke.Thickness = 1.2
 textStroke.Parent = numberLabel
 
--- 🟢 อัปเดตไฟวิ่งและกระพริบ
+-- 🟢 ทำให้ไฟหมุนวนอย่างสมูทและนุ่มนวลขึ้น
 task.spawn(function()
     local timer = 0
     while true do
-        timer = timer + 0.03
-        fireGradient.Rotation = (fireGradient.Rotation + 5) % 360
-        local pulse = math.sin(timer * 6) * 0.15 + 0.85
+        timer = timer + 0.02
+        fireGradient.Rotation = (fireGradient.Rotation + 2) % 360
+        local pulse = math.sin(timer * 4) * 0.1 + 0.9
         fireStroke.Transparency = 1 - pulse
         task.wait(0.016)
     end
